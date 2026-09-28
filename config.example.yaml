@@ -1,0 +1,50 @@
+# 必须与微信会话列表里显示的群名完全一致，建议先给群设置一个唯一备注。
+group_name: ""
+timezone: "Asia/Shanghai"
+
+collector:
+  # 只调用 WeChatDataAnalysis 的本机只读聊天接口。
+  driver: "wechat_data_analysis"
+  wda_base_url: "http://127.0.0.1:10392"
+  # 留空时使用默认微信账号；多账号时填写 WeChatDataAnalysis 返回的账号 ID。
+  wda_account: ""
+  # 留空时按 group_name 精确查找；若存在同名群，请填写 xxx@chatroom。
+  wda_session_id: ""
+  # auto 优先读取当前微信数据库；也可改成 decrypted 使用已解密快照。
+  wda_source: "auto"
+  wda_page_size: 500
+  wda_timeout_seconds: 60
+  lookback_hours: 48
+  poll_seconds: 300
+  retry_seconds: 60
+
+keywords:
+  force_include:
+    - "#重要"
+    - "#阻塞"
+    - "#必须修复"
+    - "[P0]"
+    - "[P1]"
+
+llm:
+  base_url: "https://api.deepseek.com"
+  api_key_env: "LLM_API_KEY"
+  model: "deepseek-flash"
+  timeout_seconds: 120
+  max_chunk_characters: 24000
+
+schedule:
+  hour: 10
+  minute: 0
+  failed_retry_minutes: 60
+
+storage:
+  database_path: "data/agent.db"
+  report_dir: "reports"
+  log_path: "logs/agent.log"
+
+privacy:
+  # 开启后，发送人在数据库和报表中保存为不可逆短哈希。
+  hash_senders: false
+  sender_hash_salt_env: "SENDER_HASH_SALT"
+

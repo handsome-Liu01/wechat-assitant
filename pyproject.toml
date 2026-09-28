@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wechat-issue-digest"
+version = "0.1.0"
+description = "Collect a personal WeChat group through a local read-only API and create a daily issue digest."
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+  "httpx>=0.27,<1",
+  "openpyxl>=3.1,<4",
+  "PyYAML>=6,<7",
+  "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+wechat-free = ["wxauto4; python_version < '3.13'"]
+wechat-plus = ["wxautox4"]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+wechat-digest = "wechat_digest.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
