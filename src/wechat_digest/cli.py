@@ -15,6 +15,7 @@ from .collector import create_collector
 from .config import AppConfig, load_config
 from .db import Database, MessageRecord
 from .keywords import find_force_keyword
+from .feishu import FeishuClient
 from .service import analyze_date, run_forever
 
 
@@ -25,6 +26,7 @@ def _parser() -> argparse.ArgumentParser:
 
     commands.add_parser("doctor", help="检查运行环境和微信连接")
     commands.add_parser("collect", help="采集一次当前目标群消息")
+    commands.add_parser("feishu-test", help="向飞书多维表格写入一条接入测试记录")
 
     analyze = commands.add_parser("analyze", help="分析指定日期并生成 Excel")
     analyze.add_argument("--date", default="yesterday", help="YYYY-MM-DD 或 yesterday")
@@ -62,6 +64,16 @@ def _doctor(config: AppConfig) -> int:
     print(f"目标群: {config.group_name}")
     print(f"数据库: {config.storage.database_path}")
     print(f"模型密钥: {'已设置' if os.environ.get(config.llm.api_key_env) else '未设置'}")
+    if config.feishu.enabled:
+        try:
+            with FeishuClient(config.feishu) as client:
+                fields = client.list_fields()
+            print(f"飞书: 成功，读取到 {len(fields)} 个字段（只读检查）")
+        except Exception as exc:
+            print(f"飞书: 失败 - {exc}")
+            return 4
+    else:
+        print("飞书: 未启用")
     try:
         collector = create_collector(config)
         collector.connect()
@@ -129,6 +141,14 @@ def main(argv: list[str] | None = None) -> int:
                 if callable(close):
                     close()
             print(f"消息源读取 {len(records)} 条，新增 {database.insert_messages(records)} 条")
+            return 0
+        if args.command == "feishu-test":
+            if not config.feishu.enabled:
+                raise ValueError("飞书同步尚未启用，请先配置 feishu.enabled: true")
+            with FeishuClient(config.feishu) as client:
+                fields = client.list_fields()
+                record_id = client.create_test_record(fields)
+            print(f"飞书测试记录写入成功: {record_id}")
             return 0
         if args.command == "analyze":
             collector = create_collector(config)

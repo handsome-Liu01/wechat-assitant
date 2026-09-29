@@ -58,6 +58,18 @@ class PrivacyConfig:
 
 
 @dataclass(frozen=True)
+class FeishuConfig:
+    enabled: bool = False
+    base_url: str = "https://open.feishu.cn"
+    app_id_env: str = "FEISHU_APP_ID"
+    app_secret_env: str = "FEISHU_APP_SECRET"
+    app_token: str = ""
+    table_id: str = ""
+    timeout_seconds: int = 30
+    field_mapping: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class AppConfig:
     group_name: str
     timezone: str = "Asia/Shanghai"
@@ -67,6 +79,7 @@ class AppConfig:
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
+    feishu: FeishuConfig = field(default_factory=FeishuConfig)
     config_path: Path = Path("config.yaml")
 
     @property
@@ -105,6 +118,7 @@ def load_config(path: str | Path) -> AppConfig:
     schedule = _section(data, "schedule")
     storage = _section(data, "storage")
     privacy = _section(data, "privacy")
+    feishu = _section(data, "feishu")
     keywords = _section(data, "keywords")
     base = config_path.parent
 
@@ -151,6 +165,19 @@ def load_config(path: str | Path) -> AppConfig:
             hash_senders=bool(privacy.get("hash_senders", False)),
             sender_hash_salt_env=str(privacy.get("sender_hash_salt_env", "SENDER_HASH_SALT")),
         ),
+        feishu=FeishuConfig(
+            enabled=bool(feishu.get("enabled", False)),
+            base_url=str(feishu.get("base_url", "https://open.feishu.cn")),
+            app_id_env=str(feishu.get("app_id_env", "FEISHU_APP_ID")),
+            app_secret_env=str(feishu.get("app_secret_env", "FEISHU_APP_SECRET")),
+            app_token=str(feishu.get("app_token", "")),
+            table_id=str(feishu.get("table_id", "")),
+            timeout_seconds=int(feishu.get("timeout_seconds", 30)),
+            field_mapping={
+                str(key): str(value)
+                for key, value in _section(feishu, "field_mapping").items()
+            },
+        ),
         config_path=config_path,
     )
     _validate(result)
@@ -177,4 +204,6 @@ def _validate(config: AppConfig) -> None:
         raise ValueError("schedule.hour/minute 超出范围")
     if config.llm.max_chunk_characters < 1000:
         raise ValueError("llm.max_chunk_characters 不能小于 1000")
+    if config.feishu.enabled and (not config.feishu.app_token or not config.feishu.table_id):
+        raise ValueError("启用飞书同步时，feishu.app_token 和 feishu.table_id 不能为空")
 

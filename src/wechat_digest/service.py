@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import hashlib
 import time
 from datetime import date, datetime, time as wall_time, timedelta
 
@@ -8,6 +9,7 @@ from .analyzer import OpenAICompatibleLLM, analyze_rows
 from .collector import create_collector
 from .config import AppConfig
 from .db import Database
+from .feishu import FeishuClient
 from .report import write_report
 
 
@@ -32,6 +34,8 @@ def analyze_date(
     llm = None if rules_only else OpenAICompatibleLLM(config.llm)
     issues = analyze_rows(rows, report_date.isoformat(), llm, config.llm.max_chunk_characters)
     report = write_report(issues, report_date, config.storage.report_dir, message_count=len(rows))
+    if config.feishu.enabled:
+        _sync_feishu(config, database, report_date, issues)
     database.mark_run(
         report_date,
         "rules_only" if rules_only else "success",
@@ -41,6 +45,28 @@ def analyze_date(
         report_path=str(report),
     )
     return str(report)
+
+
+def _sync_key(issue) -> str:
+    evidence = ",".join(str(value) for value in sorted(set(issue.evidence_ids)))
+    material = f"{issue.date}|{evidence}|{int(issue.forced)}"
+    if not evidence:
+        material += f"|{issue.title}|{issue.description}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _sync_feishu(config: AppConfig, database: Database, report_date: date, issues) -> None:
+    pending = [(issue, _sync_key(issue)) for issue in issues]
+    pending = [item for item in pending if database.feishu_record_id(item[1]) is None]
+    if not pending:
+        return
+    with FeishuClient(config.feishu) as client:
+        fields = client.list_fields()
+        for issue, sync_key in pending:
+            record_id = client.create_issue(issue, fields)
+            database.mark_feishu_synced(
+                sync_key, report_date, record_id, datetime.now(config.tz)
+            )
 
 
 def run_forever(config: AppConfig, database: Database) -> None:

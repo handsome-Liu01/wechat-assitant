@@ -63,7 +63,32 @@ class Database:
                 last_error TEXT,
                 updated_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS feishu_sync (
+                sync_key TEXT PRIMARY KEY,
+                report_date TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                synced_at TEXT NOT NULL
+            );
             """
+        )
+        self.connection.commit()
+
+    def feishu_record_id(self, sync_key: str) -> str | None:
+        row = self.connection.execute(
+            "SELECT record_id FROM feishu_sync WHERE sync_key = ?", (sync_key,)
+        ).fetchone()
+        return str(row["record_id"]) if row else None
+
+    def mark_feishu_synced(
+        self, sync_key: str, report_date: date, record_id: str, synced_at: datetime
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT OR IGNORE INTO feishu_sync (sync_key, report_date, record_id, synced_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (sync_key, report_date.isoformat(), record_id, synced_at.isoformat()),
         )
         self.connection.commit()
 

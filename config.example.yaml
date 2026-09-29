@@ -48,3 +48,20 @@ privacy:
   hash_senders: false
   sender_hash_salt_env: "SENDER_HASH_SALT"
 
+feishu:
+  # 启用后，analyze 和每天的自动任务会在生成 Excel 后同步新问题。
+  enabled: false
+  app_id_env: "FEISHU_APP_ID"
+  app_secret_env: "FEISHU_APP_SECRET"
+  # 多维表格链接中 /base/ 后面的值。
+  app_token: ""
+  # 多维表格链接的 table 参数。
+  table_id: ""
+  timeout_seconds: 30
+  # 默认匹配“日期、优先级、问题标题、问题分类”等报表字段。
+  # 自定义列名时，左侧填写程序字段，右侧填写飞书表格字段名。
+  field_mapping:
+    # title: "缺陷名称"
+    # priority: "严重程度"
+    # description: "缺陷描述"
+

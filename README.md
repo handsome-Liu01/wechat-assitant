@@ -9,6 +9,7 @@
 - 命中 `#重要`、`#阻塞`、`[P0]` 等关键词的消息直接收录。
 - 其余消息交给 OpenAI-compatible 模型判断和归纳。
 - Excel 报表包含重要问题、关键词强制收录和运行统计。
+- 可将分析结果增量写入飞书多维表格，并避免重复写入同一问题。
 - 只读取聊天数据，不发送消息或修改微信记录。
 
 ## 依赖项
@@ -18,6 +19,7 @@
 - 微信 4.x PC 客户端
 - [WeChatDataAnalysis](https://github.com/LifeArchiveProject/WeChatDataAnalysis/releases/latest)
 - 一个兼容 OpenAI `/chat/completions` 接口的模型服务
+- 可选：用于同步日报的飞书企业自建应用和多维表格
 
 Python 包依赖由安装脚本自动安装，主要包括 `httpx`、`openpyxl`、`PyYAML` 和 `tzdata`。
 
@@ -68,13 +70,49 @@ $env:LLM_API_KEY = "你的模型密钥"
 [Environment]::SetEnvironmentVariable("LLM_API_KEY", "你的模型密钥", "User")
 ```
 
+如需同步飞书多维表格，在 `config.yaml` 中启用并填写链接里的 `app_token` 和
+`table_id`，再将应用凭证保存为用户环境变量（不要把 Secret 写进配置或提交到 Git）：
+
+1. 在飞书开放平台创建企业自建应用，启用“机器人”能力。
+2. 为应用开通“查看、评论、编辑和管理多维表格”（`bitable:app`）权限，并发布版本。
+3. 在目标多维表格中将该文档应用添加为协作者，并授予“可编辑”权限。
+4. 从表格链接取得 `app_token`（`/base/` 后的部分）与 `table_id`（`table` 参数）。
+
+```yaml
+feishu:
+  enabled: true
+  app_id_env: "FEISHU_APP_ID"
+  app_secret_env: "FEISHU_APP_SECRET"
+  app_token: "多维表格链接中 /base/ 后面的值"
+  table_id: "链接的 table 参数"
+  timeout_seconds: 30
+  # 表格字段不是默认名称时，在这里设置“程序字段: 表格字段”。
+  field_mapping: {}
+```
+
+```powershell
+[Environment]::SetEnvironmentVariable("FEISHU_APP_ID", "你的 App ID", "User")
+[Environment]::SetEnvironmentVariable("FEISHU_APP_SECRET", "你的 App Secret", "User")
+```
+
+设置后需要重新打开 PowerShell，让新进程读取环境变量。
+
 ## 用法
 
-检查配置、WeChatDataAnalysis 和目标群：
+检查模型、飞书只读连接、WeChatDataAnalysis 和目标群：
 
 ```powershell
 .\.venv\Scripts\wechat-digest.exe doctor
 ```
+
+向飞书写入一条明确标注的接入测试记录：
+
+```powershell
+.\.venv\Scripts\wechat-digest.exe feishu-test
+```
+
+`doctor` 只读取飞书字段；`feishu-test` 才会实际新增一条记录。如果写入返回 403，检查
+应用是否已发布 `bitable:app` 权限，以及文档应用是否拥有该表格的“可编辑”权限。
 
 拉取一次消息：
 
@@ -106,4 +144,6 @@ $env:LLM_API_KEY = "你的模型密钥"
 .\scripts\install-task.ps1
 ```
 
-Excel 默认输出到 `reports`，运行日志保存在 `logs/agent.log`。运行期间需要保持 WeChatDataAnalysis 可用。
+Excel 默认输出到 `reports`，运行日志保存在 `logs/agent.log`。启用飞书后，`analyze`
+和每天 10:00 的自动任务会在生成 Excel 后将新问题同步到配置的数据表。运行期间需要保持
+WeChatDataAnalysis 可用。
