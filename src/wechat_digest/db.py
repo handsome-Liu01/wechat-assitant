@@ -70,6 +70,21 @@ class Database:
                 record_id TEXT NOT NULL,
                 synced_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS github_issue_runs (
+                source_record_id TEXT NOT NULL,
+                source_hash TEXT NOT NULL,
+                decision TEXT NOT NULL,
+                repository TEXT,
+                confidence REAL,
+                issue_number INTEGER,
+                issue_url TEXT,
+                details_json TEXT,
+                evaluated_at TEXT NOT NULL,
+                PRIMARY KEY (source_record_id, source_hash)
+            );
+            CREATE INDEX IF NOT EXISTS idx_github_issue_record
+                ON github_issue_runs(source_record_id, decision);
             """
         )
         self.connection.commit()
@@ -89,6 +104,67 @@ class Database:
             VALUES (?, ?, ?, ?)
             """,
             (sync_key, report_date.isoformat(), record_id, synced_at.isoformat()),
+        )
+        self.connection.commit()
+
+    def github_issue_result(self, source_record_id: str, source_hash: str) -> sqlite3.Row | None:
+        return self.connection.execute(
+            """
+            SELECT * FROM github_issue_runs
+            WHERE source_record_id = ? AND source_hash = ?
+            """,
+            (source_record_id, source_hash),
+        ).fetchone()
+
+    def github_created_issue(self, source_record_id: str) -> sqlite3.Row | None:
+        return self.connection.execute(
+            """
+            SELECT * FROM github_issue_runs
+            WHERE source_record_id = ? AND decision IN ('created', 'existing')
+            ORDER BY evaluated_at DESC LIMIT 1
+            """,
+            (source_record_id,),
+        ).fetchone()
+
+    def mark_github_issue_result(
+        self,
+        source_record_id: str,
+        source_hash: str,
+        decision: str,
+        evaluated_at: datetime,
+        *,
+        repository: str | None = None,
+        confidence: float | None = None,
+        issue_number: int | None = None,
+        issue_url: str | None = None,
+        details: dict | None = None,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO github_issue_runs (
+                source_record_id, source_hash, decision, repository, confidence,
+                issue_number, issue_url, details_json, evaluated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_record_id, source_hash) DO UPDATE SET
+                decision=excluded.decision,
+                repository=excluded.repository,
+                confidence=excluded.confidence,
+                issue_number=excluded.issue_number,
+                issue_url=excluded.issue_url,
+                details_json=excluded.details_json,
+                evaluated_at=excluded.evaluated_at
+            """,
+            (
+                source_record_id,
+                source_hash,
+                decision,
+                repository,
+                confidence,
+                issue_number,
+                issue_url,
+                json.dumps(details or {}, ensure_ascii=False, default=str),
+                evaluated_at.isoformat(),
+            ),
         )
         self.connection.commit()
 

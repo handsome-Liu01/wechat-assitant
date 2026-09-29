@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import logging
 import hashlib
+import logging
 import time
 from datetime import date, datetime, time as wall_time, timedelta
 
@@ -10,6 +10,7 @@ from .collector import create_collector
 from .config import AppConfig
 from .db import Database
 from .feishu import FeishuClient
+from .github_issues import run_github_issue_triage
 from .report import write_report
 
 
@@ -36,6 +37,11 @@ def analyze_date(
     report = write_report(issues, report_date, config.storage.report_dir, message_count=len(rows))
     if config.feishu.enabled:
         _sync_feishu(config, database, report_date, issues)
+    if config.github_issues.enabled and not rules_only:
+        triage_results = run_github_issue_triage(config, database)
+        logging.getLogger(__name__).info(
+            "GitHub Issue 自动分拣完成: %s 条结果", len(triage_results)
+        )
     database.mark_run(
         report_date,
         "rules_only" if rules_only else "success",

@@ -49,8 +49,15 @@ class OpenAICompatibleLLM:
         self.api_key = api_key
 
     def analyze(self, transcript: str) -> dict[str, Any]:
+        payload = self.complete_json(
+            "你是软件发行版问题分拣员，只输出合法 JSON。", _prompt(transcript)
+        )
+        if not isinstance(payload.get("issues", []), list):
+            raise ValueError("模型输出必须包含 issues 数组")
+        return payload
+
+    def complete_json(self, system: str, prompt: str) -> dict[str, Any]:
         endpoint = f"{self.config.base_url.rstrip('/')}/chat/completions"
-        prompt = _prompt(transcript)
         response = httpx.post(
             endpoint,
             headers={"Authorization": f"Bearer {self.api_key}"},
@@ -58,7 +65,7 @@ class OpenAICompatibleLLM:
                 "model": self.config.model,
                 "temperature": 0,
                 "messages": [
-                    {"role": "system", "content": "你是软件发行版问题分拣员，只输出合法 JSON。"},
+                    {"role": "system", "content": system},
                     {"role": "user", "content": prompt},
                 ],
             },
@@ -76,8 +83,8 @@ def _parse_json(content: str) -> dict[str, Any]:
         text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
         text = re.sub(r"\s*```$", "", text)
     value = json.loads(text)
-    if not isinstance(value, dict) or not isinstance(value.get("issues", []), list):
-        raise ValueError("模型输出必须是包含 issues 数组的 JSON 对象")
+    if not isinstance(value, dict):
+        raise ValueError("模型输出必须是 JSON 对象")
     return value
 
 

@@ -65,8 +65,28 @@ class FeishuConfig:
     app_secret_env: str = "FEISHU_APP_SECRET"
     app_token: str = ""
     table_id: str = ""
+    view_id: str = ""
     timeout_seconds: int = 30
     field_mapping: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class GitHubIssuesConfig:
+    enabled: bool = False
+    api_base_url: str = "https://api.github.com"
+    token_env: str = "GITHUB_TOKEN"
+    organization: str = "HarnessApex"
+    repositories_root: Path = Path(r"E:\workspace\HarnessApex")
+    repository_allowlist: tuple[str, ...] = ()
+    severity_field: str = "严重程度"
+    severity_values: tuple[str, ...] = ("一般", "轻微")
+    title_field: str = "问题标题"
+    status_field: str = "状态"
+    ignored_status_values: tuple[str, ...] = ("已修复", "已回归")
+    min_confidence: float = 0.82
+    max_issues_per_run: int = 3
+    max_repository_context_characters: int = 30000
+    dry_run: bool = True
 
 
 @dataclass(frozen=True)
@@ -80,6 +100,7 @@ class AppConfig:
     storage: StorageConfig = field(default_factory=StorageConfig)
     privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
     feishu: FeishuConfig = field(default_factory=FeishuConfig)
+    github_issues: GitHubIssuesConfig = field(default_factory=GitHubIssuesConfig)
     config_path: Path = Path("config.yaml")
 
     @property
@@ -119,6 +140,7 @@ def load_config(path: str | Path) -> AppConfig:
     storage = _section(data, "storage")
     privacy = _section(data, "privacy")
     feishu = _section(data, "feishu")
+    github_issues = _section(data, "github_issues")
     keywords = _section(data, "keywords")
     base = config_path.parent
 
@@ -172,11 +194,43 @@ def load_config(path: str | Path) -> AppConfig:
             app_secret_env=str(feishu.get("app_secret_env", "FEISHU_APP_SECRET")),
             app_token=str(feishu.get("app_token", "")),
             table_id=str(feishu.get("table_id", "")),
+            view_id=str(feishu.get("view_id", "")),
             timeout_seconds=int(feishu.get("timeout_seconds", 30)),
             field_mapping={
                 str(key): str(value)
                 for key, value in _section(feishu, "field_mapping").items()
             },
+        ),
+        github_issues=GitHubIssuesConfig(
+            enabled=bool(github_issues.get("enabled", False)),
+            api_base_url=str(github_issues.get("api_base_url", "https://api.github.com")),
+            token_env=str(github_issues.get("token_env", "GITHUB_TOKEN")),
+            organization=str(github_issues.get("organization", "HarnessApex")),
+            repositories_root=_resolve(
+                base,
+                str(github_issues.get("repositories_root", r"E:\workspace\HarnessApex")),
+            ),
+            repository_allowlist=tuple(
+                str(value) for value in github_issues.get("repository_allowlist", [])
+            ),
+            severity_field=str(github_issues.get("severity_field", "严重程度")),
+            severity_values=tuple(
+                str(value) for value in github_issues.get("severity_values", ["一般", "轻微"])
+            ),
+            title_field=str(github_issues.get("title_field", "问题标题")),
+            status_field=str(github_issues.get("status_field", "状态")),
+            ignored_status_values=tuple(
+                str(value)
+                for value in github_issues.get(
+                    "ignored_status_values", ["已修复", "已回归"]
+                )
+            ),
+            min_confidence=float(github_issues.get("min_confidence", 0.82)),
+            max_issues_per_run=int(github_issues.get("max_issues_per_run", 3)),
+            max_repository_context_characters=int(
+                github_issues.get("max_repository_context_characters", 30000)
+            ),
+            dry_run=bool(github_issues.get("dry_run", True)),
         ),
         config_path=config_path,
     )
@@ -206,4 +260,12 @@ def _validate(config: AppConfig) -> None:
         raise ValueError("llm.max_chunk_characters 不能小于 1000")
     if config.feishu.enabled and (not config.feishu.app_token or not config.feishu.table_id):
         raise ValueError("启用飞书同步时，feishu.app_token 和 feishu.table_id 不能为空")
+    if config.github_issues.enabled and not config.feishu.enabled:
+        raise ValueError("启用 GitHub Issue 自动化时必须同时启用飞书同步")
+    if not 0 <= config.github_issues.min_confidence <= 1:
+        raise ValueError("github_issues.min_confidence 必须在 0 到 1 之间")
+    if config.github_issues.max_issues_per_run < 1:
+        raise ValueError("github_issues.max_issues_per_run 不能小于 1")
+    if config.github_issues.max_repository_context_characters < 5000:
+        raise ValueError("github_issues.max_repository_context_characters 不能小于 5000")
 

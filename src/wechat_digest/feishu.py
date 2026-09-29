@@ -42,6 +42,12 @@ class FeishuField:
     is_primary: bool = False
 
 
+@dataclass(frozen=True)
+class FeishuRecord:
+    record_id: str
+    fields: dict[str, Any]
+
+
 class FeishuClient:
     def __init__(self, config: FeishuConfig, client: httpx.Client | None = None):
         self.config = config
@@ -179,6 +185,29 @@ class FeishuClient:
         if not record_id:
             raise RuntimeError("飞书写入成功但未返回 record_id")
         return record_id
+
+    def list_records(self) -> list[FeishuRecord]:
+        records: list[FeishuRecord] = []
+        page_token = ""
+        while True:
+            params: dict[str, Any] = {"page_size": 500}
+            if self.config.view_id:
+                params["view_id"] = self.config.view_id
+            if page_token:
+                params["page_token"] = page_token
+            payload = self._request("GET", self._table_path("records"), params=params)
+            data = payload.get("data") or {}
+            for item in data.get("items") or []:
+                record_id = str(item.get("record_id", ""))
+                values = item.get("fields") or {}
+                if record_id and isinstance(values, dict):
+                    records.append(FeishuRecord(record_id=record_id, fields=values))
+            if not data.get("has_more"):
+                break
+            page_token = str(data.get("page_token", ""))
+            if not page_token:
+                break
+        return records
 
     def create_test_record(self, fields: Iterable[FeishuField]) -> str:
         primary = next((field for field in fields if field.is_primary), None)

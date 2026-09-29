@@ -16,6 +16,7 @@ from .config import AppConfig, load_config
 from .db import Database, MessageRecord
 from .keywords import find_force_keyword
 from .feishu import FeishuClient
+from .github_issues import discover_repositories, run_github_issue_triage
 from .service import analyze_date, run_forever
 
 
@@ -27,6 +28,20 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("doctor", help="检查运行环境和微信连接")
     commands.add_parser("collect", help="采集一次当前目标群消息")
     commands.add_parser("feishu-test", help="向飞书多维表格写入一条接入测试记录")
+    github_triage = commands.add_parser(
+        "github-triage", help="分析飞书低严重度问题并生成 GitHub Issue"
+    )
+    github_triage.add_argument(
+        "--apply", action="store_true", help="实际创建 Issue；默认强制试运行"
+    )
+    selection = github_triage.add_mutually_exclusive_group()
+    selection.add_argument(
+        "--record-index", type=int, help="只处理当前飞书视图中第 N 条记录（从 1 开始）"
+    )
+    selection.add_argument("--record-id", help="只处理指定的飞书 record_id")
+    github_triage.add_argument(
+        "--recheck", action="store_true", help="忽略未解决/试运行缓存并重新分析"
+    )
 
     analyze = commands.add_parser("analyze", help="分析指定日期并生成 Excel")
     analyze.add_argument("--date", default="yesterday", help="YYYY-MM-DD 或 yesterday")
@@ -74,6 +89,22 @@ def _doctor(config: AppConfig) -> int:
             return 4
     else:
         print("飞书: 未启用")
+    if config.github_issues.enabled:
+        try:
+            repositories = discover_repositories(config.github_issues)
+            token_set = bool(os.environ.get(config.github_issues.token_env))
+            mode = "试运行" if config.github_issues.dry_run else "实际创建"
+            print(
+                f"GitHub Issue: 已启用（{mode}），本地识别 {len(repositories)} 个仓库，"
+                f"令牌{'已设置' if token_set else '未设置'}"
+            )
+            if not config.github_issues.dry_run and not token_set:
+                return 5
+        except Exception as exc:
+            print(f"GitHub Issue: 失败 - {exc}")
+            return 5
+    else:
+        print("GitHub Issue: 未启用")
     try:
         collector = create_collector(config)
         collector.connect()
@@ -149,6 +180,28 @@ def main(argv: list[str] | None = None) -> int:
                 fields = client.list_fields()
                 record_id = client.create_test_record(fields)
             print(f"飞书测试记录写入成功: {record_id}")
+            return 0
+        if args.command == "github-triage":
+            if not config.github_issues.enabled:
+                raise ValueError("GitHub Issue 自动化尚未启用")
+            results = run_github_issue_triage(
+                config,
+                database,
+                dry_run=not args.apply,
+                record_index=args.record_index,
+                record_id=args.record_id,
+                force=args.recheck,
+            )
+            if not results:
+                print("没有需要处理的新候选问题")
+            for result in results:
+                target = f" -> {result.repository}" if result.repository else ""
+                url = f" {result.issue_url}" if result.issue_url else ""
+                print(
+                    f"{result.record_id}: {result.decision}{target} "
+                    f"(置信度 {result.confidence:.2f}){url}"
+                    f"{f' - {result.reason}' if result.reason else ''}"
+                )
             return 0
         if args.command == "analyze":
             collector = create_collector(config)

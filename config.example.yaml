@@ -57,6 +57,8 @@ feishu:
   app_token: ""
   # 多维表格链接的 table 参数。
   table_id: ""
+  # 可选：链接的 view 参数；设置后记录序号与该视图顺序一致。
+  view_id: ""
   timeout_seconds: 30
   # 默认匹配“日期、优先级、问题标题、问题分类”等报表字段。
   # 自定义列名时，左侧填写程序字段，右侧填写飞书表格字段名。
@@ -64,4 +66,30 @@ feishu:
     # title: "缺陷名称"
     # priority: "严重程度"
     # description: "缺陷描述"
+
+github_issues:
+  # 读取飞书低严重度记录，结合本地历史仓库评估后创建 GitHub Issue。
+  enabled: false
+  token_env: "GITHUB_TOKEN"
+  organization: "HarnessApex"
+  repositories_root: "E:/workspace/HarnessApex"
+  # 留空表示使用本地目录中远程属于该组织的全部仓库。
+  repository_allowlist: []
+  severity_field: "严重程度"
+  severity_values:
+    - "一般"
+    - "轻微"
+  title_field: "问题标题"
+  # 已经处理完成的记录不再调用模型或创建 Issue。
+  status_field: "状态"
+  ignored_status_values:
+    - "已修复"
+    - "已回归"
+  # 必须能定位真实文件并达到此置信度，才会进入提单流程。
+  min_confidence: 0.82
+  # 防止一次运行创建过多 Issue。
+  max_issues_per_run: 3
+  max_repository_context_characters: 30000
+  # 首次使用保持 true；确认结果后改为 false 才会由定时任务真实提单。
+  dry_run: true
 
